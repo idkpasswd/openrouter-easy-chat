@@ -1,0 +1,15 @@
+{
+  "name": "Nemotron Chat",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Nemotron Chat", "onAutoForward": "openBrowser" }
+  },
+  "postAttachCommand": "node server.js",
+  "secrets": {
+    "OPENROUTER_API_KEY": {
+      "description": "可选：你的 OpenRouter API Key。设置后网页里不用再填 Key。",
+      "documentationUrl": "https://openrouter.ai/keys"
+    }
+  }
+}
