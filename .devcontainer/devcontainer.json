@@ -1,6 +1,9 @@
 {
   "name": "Nemotron Chat",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": { "label": "Nemotron Chat", "onAutoForward": "openBrowser" }
