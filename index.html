@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nemotron Chat</title>
+<style>
+  :root{--bg:#f7f7f5;--panel:#fff;--side:#efeee9;--text:#1f1f1f;--muted:#777;--border:#e0ded8;--accent:#76b900;--user:#e9f3dc}
+  @media (prefers-color-scheme:dark){:root{--bg:#1b1b1b;--panel:#242424;--side:#151515;--text:#e8e8e8;--muted:#999;--border:#333;--user:#2c3a1c}}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex}
+  aside{width:260px;background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:12px;gap:10px}
+  aside h1{font-size:16px;margin:4px 0}
+  button{font:inherit;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 10px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #chatList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px}
+  .chatItem{display:flex;align-items:center;gap:4px;padding:8px;border-radius:8px;cursor:pointer;font-size:14px}
+  .chatItem:hover,.chatItem.active{background:var(--panel)}
+  .chatItem span{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .chatItem .del{border:none;background:none;padding:0 4px;color:var(--muted);visibility:hidden}
+  .chatItem:hover .del{visibility:visible}
+  .settings{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+  input,select,textarea{font:inherit;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px}
+  .muted{color:var(--muted);font-size:12px}
+  .muted a{color:var(--accent)}
+  main{flex:1;display:flex;flex-direction:column;min-width:0}
+  #messages{flex:1;overflow:auto;padding:24px 0}
+  .msg{max-width:760px;margin:0 auto 18px;padding:0 20px;display:flex}
+  .msg.user{justify-content:flex-end}
+  .bubble{line-height:1.65;word-wrap:break-word;overflow-wrap:anywhere}
+  .msg.user .bubble{background:var(--user);padding:10px 14px;border-radius:14px;max-width:80%;white-space:pre-wrap}
+  .msg.assistant .bubble{width:100%}
+  .bubble img{max-width:240px;border-radius:8px;display:block;margin-bottom:6px}
+  .bubble pre{background:#111;color:#eee;padding:12px;border-radius:8px;overflow:auto;font-size:13px}
+  .bubble code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em}
+  .bubble :not(pre)>code{background:var(--border);padding:1px 5px;border-radius:4px}
+  .bubble p{margin:0 0 .7em}
+  details.think{color:var(--muted);font-size:13px;margin-bottom:8px;border-left:3px solid var(--border);padding-left:10px}
+  .error{color:#d33}
+  #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#d33;color:#fff;padding:10px 16px;border-radius:8px;z-index:9;display:none;font-size:14px}
+  input.warn{border-color:#d33;box-shadow:0 0 0 2px #d333}
+  .empty{text-align:center;color:var(--muted);margin-top:20vh}
+  .composer{max-width:760px;width:100%;margin:0 auto;padding:12px 20px 20px}
+  .inputBox{border:1px solid var(--border);background:var(--panel);border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:6px}
+  .inputBox textarea{border:none;resize:none;outline:none;min-height:44px;max-height:200px;background:transparent}
+  .row{display:flex;align-items:center;gap:8px}
+  .row .grow{flex:1}
+  #preview img{height:48px;border-radius:6px;margin-right:4px}
+  #menuBtn{display:none}
+  @media (max-width:700px){
+    aside{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:.2s}
+    aside.open{transform:none}
+    #menuBtn{display:inline-block;margin:8px}
+  }
+</style>
+</head>
+<body>
+<div id="toast"></div>
+<aside id="side">
+  <h1>💬 Nemotron Chat</h1>
+  <button class="primary" id="newBtn">＋ 新对话</button>
+  <div id="chatList"></div>
+  <div class="settings">
+    <label>OpenRouter API Key</label>
+    <input id="keyInput" type="password" placeholder="sk-or-...">
+    <label>模型</label>
+    <select id="modelSel">
+      <option value="nvidia/nemotron-3.5-super-vl:free">Nemotron 3.5 Super VL (free)</option>
+      <option value="nvidia/nemotron-3.5-lightning:free">Nemotron 3.5 Lightning (free)</option>
+      <option value="nvidia/nemotron-3.5-super-vl">Nemotron 3.5 Super VL</option>
+      <option value="nvidia/nemotron-nano-12b-v2-vl">Nemotron Nano 12B 2 VL</option>
+      <option value="nvidia/nemotron-nano-12b-v2-vl:free">Nemotron Nano 12B 2 VL (free)</option>
+    </select>
+    <div class="muted">Key 和对话只存在本机浏览器 (localStorage)。<a href="https://openrouter.ai/keys" target="_blank">获取 Key</a></div>
+  </div>
+</aside>
+
+<main>
+  <div><button id="menuBtn">☰</button></div>
+  <div id="messages"></div>
+  <div id="form" class="composer">
+    <div class="inputBox">
+      <div id="preview"></div>
+      <textarea id="input" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+      <div class="row">
+        <button type="button" id="imgBtn" title="添加图片">🖼️</button>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        <span class="grow"></span>
+        <button type="button" class="primary" id="sendBtn">发送</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 4000); }
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){ toast('本地存储已满，请删除一些旧对话（图片很占空间）'); } }
+};
+
+let chats = LS.get('chats', []);
+let currentId = LS.get('currentId', null);
+let pendingImages = [];
+let controller = null;
+
+$('keyInput').value = LS.get('apiKey', '');
+$('keyInput').oninput = e => { LS.set('apiKey', e.target.value.trim()); e.target.classList.remove('warn'); };
+$('modelSel').value = LS.get('model', 'nvidia/nemotron-3.5-super-vl:free');
+if (!$('modelSel').value) $('modelSel').value = 'nvidia/nemotron-3.5-super-vl:free';
+$('modelSel').onchange = e => LS.set('model', e.target.value);
+
+const save = () => { LS.set('chats', chats); LS.set('currentId', currentId); };
+const current = () => chats.find(c => c.id === currentId);
+
+function newChat(){
+  const c = { id: Date.now().toString(36), title: '新对话', messages: [] };
+  chats.unshift(c); currentId = c.id; save(); render();
+}
+
+function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// 极简 markdown：代码块、行内代码、粗体、标题、列表、段落
+function md(src){
+  const blocks = [];
+  src = src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g, (_, l, code) => { blocks.push(code); return `\u0000${blocks.length-1}\u0000`; });
+  let h = esc(src)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/^#{1,6} (.*)$/gm, '<b>$1</b>')
+    .replace(/^\s*[-*] (.*)$/gm, '• $1');
+  h = h.split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  return h.replace(/\u0000(\d+)\u0000/g, (_, i) => `<pre><code>${esc(blocks[i])}</code></pre>`);
+}
+
+function renderMsg(m){
+  const div = document.createElement('div');
+  div.className = 'msg ' + m.role;
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  if (m.role === 'user'){
+    (m.images || []).forEach(src => { const i = new Image(); i.src = src; b.appendChild(i); });
+    b.appendChild(document.createTextNode(m.content));
+  } else {
+    let html = '';
+    if (m.reasoning) html += `<details class="think"><summary>思考过程</summary>${md(m.reasoning)}</details>`;
+    html += m.error ? `<div class="error">${esc(m.error)}</div>` : md(m.content || '…');
+    b.innerHTML = html;
+  }
+  div.appendChild(b);
+  return div;
+}
+
+function render(){
+  const list = $('chatList'); list.innerHTML = '';
+  chats.forEach(c => {
+    const it = document.createElement('div');
+    it.className = 'chatItem' + (c.id === currentId ? ' active' : '');
+    it.innerHTML = `<span>${esc(c.title)}</span><button class="del" title="删除">✕</button>`;
+    it.onclick = () => { currentId = c.id; save(); render(); $('side').classList.remove('open'); };
+    it.querySelector('.del').onclick = e => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      if (btn.textContent !== '确认') { btn.textContent = '确认'; btn.style.visibility = 'visible'; btn.style.color = '#d33'; return; }
+      chats = chats.filter(x => x.id !== c.id);
+      if (currentId === c.id) currentId = chats[0]?.id || null;
+      save(); render();
+    };
+    list.appendChild(it);
+  });
+  const box = $('messages'); box.innerHTML = '';
+  const c = current();
+  if (!c || !c.messages.length){ box.innerHTML = '<div class="empty"><h2>有什么可以帮你？</h2><p>支持文字和图片输入</p></div>'; return; }
+  c.messages.forEach(m => box.appendChild(renderMsg(m)));
+  box.scrollTop = box.scrollHeight;
+}
+
+function toApi(m){
+  if (m.role === 'user' && m.images?.length){
+    return { role: 'user', content: [
+      { type: 'text', text: m.content || '请描述这张图片' },
+      ...m.images.map(url => ({ type: 'image_url', image_url: { url } }))
+    ]};
+  }
+  return { role: m.role, content: m.content || '' };
+}
+
+async function send(){
+  if (controller){ controller.stopped = true; controller.reader?.cancel().catch(()=>{}); return; }
+  const text = $('input').value.trim();
+  if (!text && !pendingImages.length) return;
+  const key = $('keyInput').value.trim();
+  if (!key){ toast('请先在左下角填入 OpenRouter API Key'); $('keyInput').classList.add('warn'); $('side').classList.add('open'); $('keyInput').focus(); return; }
+  if (!current()) newChat();
+  const c = current();
+  c.messages.push({ role: 'user', content: text, images: pendingImages });
+  if (c.title === '新对话') c.title = (text || '图片').slice(0, 24);
+  $('input').value = ''; pendingImages = []; $('preview').innerHTML = '';
+  const reply = { role: 'assistant', content: '', reasoning: '' };
+  c.messages.push(reply);
+  save(); render();
+
+  const box = $('messages');
+  const node = box.lastChild;
+  let live = node;
+  const refresh = () => { const n = renderMsg(reply); live.replaceWith(n); live = n; box.scrollTop = box.scrollHeight; };
+
+  controller = { stopped: false, reader: null };
+  const ctl = controller;
+  $('sendBtn').textContent = '停止';
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': location.href,
+        'X-Title': 'Nemotron Chat'
+      },
+      body: JSON.stringify({
+        model: $('modelSel').value,
+        stream: true,
+        messages: c.messages.slice(0, -1).map(toApi)
+      })
+    });
+    if (!res.ok){
+      let msg = res.status + ' ' + res.statusText;
+      try { const j = await res.json(); msg = j.error?.message || msg; } catch {}
+      throw new Error(msg);
+    }
+    const handle = lines => {
+      for (const line of lines){
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const j = JSON.parse(data);
+          if (j.error) throw new Error(j.error.message);
+          const d = j.choices?.[0]?.delta || {};
+          if (d.reasoning) reply.reasoning += d.reasoning;
+          if (d.content) reply.content += d.content;
+        } catch(e){ if (e.message && !(e instanceof SyntaxError)) throw e; }
+      }
+      refresh();
+    };
+    if (res.body && res.body.getReader){
+      const reader = res.body.getReader();
+      ctl.reader = reader;
+      const dec = new TextDecoder();
+      let buf = '';
+      while (!ctl.stopped){
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        handle(lines);
+      }
+      if (buf) handle([buf]);
+    } else {
+      // 环境不支持流式读取时，一次性读完整个回复
+      const text = await res.text();
+      if (!ctl.stopped) handle(text.split('\n'));
+    }
+  } catch(e){
+    if (!ctl.stopped) reply.error = '出错了：' + e.message;
+  } finally {
+    controller = null;
+    $('sendBtn').textContent = '发送';
+    if (!reply.content && !reply.error) reply.content = '（已停止）';
+    save(); refresh();
+  }
+}
+
+// 图片：压缩到最长边 1024，减小本地存储占用
+function addImage(file){
+  const r = new FileReader();
+  r.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = img.width * s; cv.height = img.height * s;
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      const url = cv.toDataURL('image/jpeg', 0.85);
+      pendingImages.push(url);
+      const p = new Image(); p.src = url; $('preview').appendChild(p);
+    };
+    img.src = r.result;
+  };
+  r.readAsDataURL(file);
+}
+
+$('imgBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => { [...e.target.files].forEach(addImage); e.target.value = ''; };
+$('input').addEventListener('paste', e => {
+  [...e.clipboardData.items].filter(i => i.type.startsWith('image/')).forEach(i => addImage(i.getAsFile()));
+});
+$('sendBtn').onclick = send;
+$('input').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } };
+$('newBtn').onclick = newChat;
+$('menuBtn').onclick = () => $('side').classList.toggle('open');
+
+render();
+</script>
+</body>
+</html>
